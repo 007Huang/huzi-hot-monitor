@@ -1,21 +1,34 @@
-// OpenRouter AI 集成 - 使用 OpenAI SDK，自动选择可用模型
-import OpenAI from 'openai';
+/**
+ * Acedata.cloud AI 集成
+ *
+ * API 文档：https://platform.acedata.cloud/documents/aichat2-conversations-integration
+ * Endpoint: POST https://api.acedata.cloud/aichat2/conversations
+ *
+ * 注意：此 API 非标准 OpenAI 格式
+ *   - 请求: { model, question }  而非 { model, messages }
+ *   - 响应: { answer, id }      而非 { choices: [...] }
+ */
 import type { MatchResult, FakeDetectResult, SummarizeResult, TrendItem } from '@/types';
 
-const client = new OpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY,
-  defaultHeaders: {
-    'HTTP-Referer': 'https://huzi-hot-monitor.app',
-    'X-OpenRouter-Title': 'Hot Monitor',
-  },
-});
+// ===== API 配置 =====
+const ACEDATA_BASE_URL = 'https://api.acedata.cloud/aichat2/conversations';
+const ACEDATA_API_KEY = process.env.ACEDATA_API_KEY || '';
 
-// 模型优先级列表：免费模型优先，付费模型作为后备
+// ===== 类型定义 =====
+interface AcedataResponse {
+  answer: string;
+  id: string;
+}
+
+// 模型优先级列表：按性价比排序
 const MODEL_FALLBACKS = [
-  'google/gemma-4-31b-it:free',      // 免费，31B参数，质量不错
-  'nvidia/nemotron-3-super-120b-a12b:free', // 免费，120B MoE
-  'deepseek/deepseek-chat',           // 付费，便宜好用
+  'gpt-5.4-mini',              // gpt-5.4-mini，响应快
+   'deepseek-v4-flash',    // DeepSeek V4 Flash，便宜
+   
+  // 'gpt-5.4',              // GPT-5.4，响应快
+
+  // 'claude-opus-4-8',      // Claude Opus 4.8，质量最高
+
 ];
 
 // 缓存当前可用的模型
@@ -24,25 +37,37 @@ let workingModel: string | null = null;
 /**
  * 通用 AI 调用方法（带模型自动降级）
  */
-async function callAI(systemPrompt: string, userPrompt: string, maxTokens = 500): Promise<string> {
-  // 如果已知可用模型，直接使用
+async function callAI(systemPrompt: string, userPrompt: string, _maxTokens = 500): Promise<string> {
+  // 组合 system + user 为一个完整的问题
+  const question = `${systemPrompt}\n\n${userPrompt}`;
+
+  // 如果已知可用模型，优先使用
   const modelsToTry = workingModel
     ? [workingModel, ...MODEL_FALLBACKS.filter(m => m !== workingModel)]
     : MODEL_FALLBACKS;
 
   for (const model of modelsToTry) {
     try {
-      const completion = await client.chat.completions.create({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.3,
-        max_tokens: maxTokens,
+      const response = await fetch(ACEDATA_BASE_URL, {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'Authorization': `Bearer ${ACEDATA_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model, question }),
       });
 
-      const content = completion.choices[0]?.message?.content || '';
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({})) as Record<string, unknown>;
+        const errMsg = ((errorBody as { error?: { message?: string } })?.error?.message
+          || (errorBody as { message?: string })?.message
+          || `HTTP ${response.status}`) as string;
+        throw new Error(errMsg);
+      }
+
+      const data: AcedataResponse = await response.json();
+      const content = data.answer || '';
       if (content) {
         workingModel = model; // 缓存可用模型
         return content;
@@ -51,16 +76,16 @@ async function callAI(systemPrompt: string, userPrompt: string, maxTokens = 500)
       const errMsg = error instanceof Error ? error.message : String(error);
       console.warn(`Model ${model} failed: ${errMsg.slice(0, 100)}`);
 
-      // 402/401 说明余额不足或认证失败，跳过此模型
+      // 402 余额不足 / 401 认证失败 — 跳过此模型
       if (errMsg.includes('402') || errMsg.includes('401') || errMsg.includes('Insufficient')) {
         continue;
       }
-      // 其他错误（网络等）也跳过
+      // 其他错误也跳过
       continue;
     }
   }
 
-  throw new Error('所有AI模型均不可用，请检查 OPENROUTER_API_KEY 配置或账户余额');
+  throw new Error('所有AI模型均不可用，请检查 ACEDATA_API_KEY 配置或账户余额');
 }
 
 /**
