@@ -4,7 +4,7 @@ url = "https://api.acedata.cloud/aichat2/conversations"
 
 headers = {
     "accept": "application/json",
-    "authorization": "Bearer 8a462f67007847f8badcf5bfd5e7885c",
+    "authorization": "Bearer ",
     "content-type": "application/json",
 }
 
@@ -23,7 +23,7 @@ url = "https://api.acedata.cloud/v1/messages"
 
 headers = {
     "accept": "application/json",
-    "authorization": "Bearer 8a462f67007847f8badcf5bfd5e7885c",
+    "authorization": "Bearer ",
     "content-type": "application/json"
 }
 
