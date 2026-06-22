@@ -1,6 +1,6 @@
 // TypeScript 类型定义
 
-export type SourceType = 'web-search' | 'twitter';
+export type SourceType = 'web-search' | 'twitter' | 'weibo' | 'zhihu' | 'tech-news' | 'toutiao';
 
 /** 热点条目 */
 export interface TrendItem {
@@ -24,7 +24,7 @@ export interface TrendItem {
 export interface MonitorKeyword {
   id: string;
   keyword: string;
-  scope?: 'all' | 'web-search' | 'twitter';
+  scope?: 'all' | SourceType;
   active: boolean;
   createdAt: string;
   lastMatchedAt?: string;

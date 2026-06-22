@@ -1,7 +1,9 @@
-// 网页搜索爬虫 - 使用 fetch + cheerio 从搜索引擎和科技站点获取热点
+// 网页搜索爬虫 - 使用 fetch + cheerio 从搜索引擎获取热点
 import * as cheerio from 'cheerio';
 import type { TrendItem, SourceType } from '@/types';
 import { createHash } from 'crypto';
+import { searchBaidu, searchSogou } from './china-search';
+import { filterFreshItems } from '@/lib/freshness';
 
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -44,7 +46,7 @@ async function searchBing(options: SearchOptions): Promise<TrendItem[]> {
 
   try {
     const params = new URLSearchParams({
-      q: `${keyword} latest`,
+      q: keyword,  // 纯关键词搜索，不追加修饰词
       count: String(limit * 2),
     });
     if (fresh === 'day') params.set('filters', 'ex1:"ez1"');
@@ -115,7 +117,7 @@ async function searchDuckDuckGo(options: SearchOptions): Promise<TrendItem[]> {
 
   try {
     // DuckDuckGo HTML 版本
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(keyword + ' latest news')}`;
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(keyword)}`;
     const res = await fetch(url, {
       headers: {
         'User-Agent': getRandomUserAgent(),
@@ -168,80 +170,29 @@ async function searchDuckDuckGo(options: SearchOptions): Promise<TrendItem[]> {
 }
 
 /**
- * 科技站点专用爬虫 - TechCrunch AI
- */
-async function fetchTechCrunchAI(limit = 10): Promise<TrendItem[]> {
-  const cacheKey = 'techcrunch-ai';
-  const cached = searchCache.get(cacheKey);
-  if (cached && Date.now() - cached.time < CACHE_TTL) {
-    return cached.results.slice(0, limit);
-  }
-
-  try {
-    const res = await fetch('https://techcrunch.com/category/artificial-intelligence/', {
-      headers: {
-        'User-Agent': getRandomUserAgent(),
-        'Accept': 'text/html',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!res.ok) return [];
-
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    const results: TrendItem[] = [];
-    const now = new Date().toISOString();
-
-    $('article.post-block').each((_, el) => {
-      if (results.length >= limit) return;
-
-      const titleEl = $(el).find('h2 a');
-      const title = titleEl.text().trim();
-      const url = titleEl.attr('href') || '';
-      const description = $(el).find('.post-block__content').text().trim();
-
-      if (title && url) {
-        results.push({
-          id: generateId('tc', url),
-          title,
-          url,
-          description: description.slice(0, 200),
-          score: 70 + Math.floor(Math.random() * 25),
-          source: 'web-search' as SourceType,
-          sourceLabel: 'TechCrunch',
-          tags: ['AI'],
-          createdAt: now,
-          fetchedAt: now,
-        });
-      }
-    });
-
-    searchCache.set(cacheKey, { time: Date.now(), results });
-    return results;
-  } catch (error) {
-    console.error('TechCrunch fetch error:', error);
-    return [];
-  }
-}
-
-/**
  * 聚合搜索 - 从多个搜索引擎获取并合并去重
+ * 包含：Bing + DuckDuckGo + 百度 + 搜狗
+ * 策略：先拓宽搜索获取更多内容，再用新鲜度过滤（7天窗口）筛选
  */
 export async function webSearch(options: SearchOptions): Promise<TrendItem[]> {
-  const { keyword, limit = 20 } = options;
+  // 默认返回最近一周的结果，比 'day' 更宽，保证召回率
+  const { keyword, limit = 20, fresh = 'week' } = options;
 
   // 并行搜索多个源
-  const [bingResults, ddgResults] = await Promise.allSettled([
+  const [bingResults, ddgResults, baiduResults, sogouResults] = await Promise.allSettled([
     searchBing(options),
     searchDuckDuckGo(options),
+    searchBaidu(keyword, limit),
+    searchSogou(keyword, limit),
   ]);
 
   const bing = bingResults.status === 'fulfilled' ? bingResults.value : [];
   const ddg = ddgResults.status === 'fulfilled' ? ddgResults.value : [];
+  const baidu = baiduResults.status === 'fulfilled' ? baiduResults.value : [];
+  const sogou = sogouResults.status === 'fulfilled' ? sogouResults.value : [];
 
   // 合并并去重（按标题相似度）
-  const allResults = [...bing, ...ddg];
+  const allResults = [...bing, ...baidu, ...ddg, ...sogou];
   const seen = new Set<string>();
   const deduped: TrendItem[] = [];
 
@@ -256,27 +207,25 @@ export async function webSearch(options: SearchOptions): Promise<TrendItem[]> {
 
   // 按热度排序
   deduped.sort((a, b) => b.score - a.score);
-  return deduped.slice(0, limit);
+
+  // 新鲜度过滤：只保留7天内的内容（搜索引擎结果 createdAt 为抓取时间，
+  // 但搜索引擎本身已通过 fresh 参数做了时间筛选，此处作为安全网）
+  const freshResults = filterFreshItems(deduped);
+
+  return freshResults.slice(0, limit);
 }
 
 /**
  * 获取AI相关热点（无需关键词）
+ * TechCrunch 已移至 lib/sources/tech-news.ts
  */
 export async function fetchAITrends(limit = 20): Promise<TrendItem[]> {
-  const [searchResults, techCrunchResults] = await Promise.allSettled([
-    webSearch({ keyword: 'AI artificial intelligence', limit, fresh: 'day' }),
-    fetchTechCrunchAI(limit),
-  ]);
-
-  const search = searchResults.status === 'fulfilled' ? searchResults.value : [];
-  const tc = techCrunchResults.status === 'fulfilled' ? techCrunchResults.value : [];
-
-  const allResults = [...tc, ...search];
+  const searchResults = await webSearch({ keyword: 'AI artificial intelligence', limit, fresh: 'day' });
 
   // 去重
   const seen = new Set<string>();
   const deduped: TrendItem[] = [];
-  for (const item of allResults) {
+  for (const item of searchResults) {
     const key = item.title.slice(0, 30).toLowerCase();
     if (!seen.has(key)) {
       seen.add(key);

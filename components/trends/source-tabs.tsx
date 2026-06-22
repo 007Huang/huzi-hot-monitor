@@ -10,8 +10,12 @@ interface SourceTabsProps {
 
 const sources = [
   { value: 'all', label: '全部', icon: '🌐' },
-  { value: 'web-search', label: '网页搜索', icon: '🔍' },
+  { value: 'web-search', label: '搜索', icon: '🔍' },
   { value: 'twitter', label: 'Twitter', icon: '🐦' },
+  { value: 'weibo', label: '微博', icon: '📢' },
+  { value: 'zhihu', label: '知乎', icon: '💡' },
+  { value: 'tech-news', label: '科技', icon: '💻' },
+  { value: 'toutiao', label: '头条', icon: '📰' },
 ] as const;
 
 export function SourceTabs({ value, onChange }: SourceTabsProps) {

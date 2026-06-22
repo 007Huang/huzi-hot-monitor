@@ -116,7 +116,7 @@ export function addNotifiedId(id: string): void {
 const DEFAULT_CONFIG: MonitorConfig = {
   interval: 5 * 60 * 1000, // 5分钟
   keywords: [],
-  sources: ['web-search', 'twitter'],
+  sources: ['web-search', 'twitter', 'weibo', 'zhihu', 'tech-news', 'toutiao'],
   enabled: false,
 };
 

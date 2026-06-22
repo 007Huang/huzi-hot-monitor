@@ -15,6 +15,10 @@ interface TrendCardProps {
 const sourceColors: Record<string, string> = {
   'web-search': 'bg-accent/20 text-accent border-accent/30',
   'twitter': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  'weibo': 'bg-red-500/20 text-red-400 border-red-500/30',
+  'zhihu': 'bg-blue-600/20 text-blue-500 border-blue-600/30',
+  'tech-news': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  'toutiao': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
 };
 
 export function TrendCard({ trend, rank, onClick }: TrendCardProps) {

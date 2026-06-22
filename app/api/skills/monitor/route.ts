@@ -3,13 +3,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { webSearch } from '@/lib/sources/web-search';
 import { searchTweets } from '@/lib/sources/twitter';
+import { fetchWeiboHotSearch } from '@/lib/sources/weibo';
+import { fetchZhihuHot, searchZhihu } from '@/lib/sources/zhihu';
+import { fetchTechNews } from '@/lib/sources/tech-news';
+import { fetchToutiaoHot } from '@/lib/sources/toutiao';
 import { matchKeywords, detectFake } from '@/lib/ai';
+import { filterFreshItems } from '@/lib/freshness';
 import type { TrendItem, SourceType } from '@/types';
+
+const ALL_SOURCES: SourceType[] = ['web-search', 'twitter', 'weibo', 'zhihu', 'tech-news', 'toutiao'];
+const VALID_SOURCES = new Set<string>(ALL_SOURCES);
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { keywords, sources = ['web-search', 'twitter'], checkFake = true, excludeIds = [] } = body;
+    const { keywords, sources = ALL_SOURCES, checkFake = true, excludeIds = [] } = body;
 
     if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
       return NextResponse.json(
@@ -18,9 +26,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validSources = (sources as string[]).filter((s): s is SourceType =>
-      ['web-search', 'twitter'].includes(s)
-    );
+    const validSources = (sources as string[]).filter((s): s is SourceType => VALID_SOURCES.has(s));
 
     const excludeSet = new Set(excludeIds as string[]);
 
@@ -36,13 +42,30 @@ export async function POST(request: NextRequest) {
       fetchPromises.push(searchTweets({ keyword: keywordQuery, limit: 10 }));
     }
 
+    if (validSources.includes('weibo')) {
+      fetchPromises.push(fetchWeiboHotSearch(10));
+    }
+
+    if (validSources.includes('zhihu')) {
+      fetchPromises.push(fetchZhihuHot(10));
+      fetchPromises.push(searchZhihu(keywordQuery, 10));
+    }
+
+    if (validSources.includes('tech-news')) {
+      fetchPromises.push(fetchTechNews(10));
+    }
+
+    if (validSources.includes('toutiao')) {
+      fetchPromises.push(fetchToutiaoHot(10));
+    }
+
     const settled = await Promise.allSettled(fetchPromises);
     const allTrends: TrendItem[] = settled
       .filter((r): r is PromiseFulfilledResult<TrendItem[]> => r.status === 'fulfilled')
       .flatMap(r => r.value);
 
-    // 过滤已排除的
-    const newTrends = allTrends.filter(t => !excludeSet.has(t.id));
+    // 过滤已排除的 + 新鲜度过滤（安全网，只保留7天内的内容）
+    const newTrends = filterFreshItems(allTrends.filter(t => !excludeSet.has(t.id)));
 
     // AI 关键词匹配
     const matchedTrends: TrendItem[] = [];
