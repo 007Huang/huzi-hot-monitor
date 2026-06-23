@@ -1,5 +1,5 @@
 import { RadarLayout } from '@/components/radar/radar-layout';
 
-export default function HomePage() {
+export default function RadarPage() {
   return <RadarLayout />;
 }

@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     // 并行获取各数据源
     const fetchPromises: Promise<TrendItem[]>[] = [];
-    const perSourceLimit = Math.max(5, Math.ceil(limit / sources.length));
+    const perSourceLimit = Math.max(10, Math.ceil(limit / sources.length));
 
     // ===== 搜索型源：有关键词时用关键词搜索，无关键词时返回默认热门 =====
 

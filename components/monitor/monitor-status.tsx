@@ -17,7 +17,7 @@ export function MonitorStatus({ enabled, interval, lastCheckAt, onToggle }: Moni
     <div className="flex items-center gap-3">
       <ShimmerButton
         onClick={onToggle}
-        className={`h-8 px-4 text-xs font-medium ${
+        className={`h-9 px-4 text-sm font-medium ${
           enabled
             ? 'bg-primary shimmer:primary-foreground'
             : 'bg-muted text-muted-foreground'
@@ -28,18 +28,18 @@ export function MonitorStatus({ enabled, interval, lastCheckAt, onToggle }: Moni
 
       {enabled && (
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
+          <Badge variant="outline" className="text-xs border-primary/30 text-primary">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse mr-1" />
             监控中
           </Badge>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             每{intervalMin}分钟检查
           </span>
         </div>
       )}
 
       {lastCheckAt && (
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           上次检查: {formatTimeAgo(lastCheckAt)}
         </span>
       )}

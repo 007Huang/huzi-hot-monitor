@@ -16,6 +16,8 @@ export interface TrendItem {
   isFake?: boolean;        // AI 判断是否为虚假内容
   fakeReason?: string;     // 判断为虚假的原因
   matchedKeywords?: string[]; // 匹配到的关键词
+  direction?: TrendDirection; // 热度变化方向
+  previousScore?: number;     // 上次热度分
   createdAt: string;       // 内容发布时间 (ISO)
   fetchedAt: string;       // 抓取时间 (ISO)
 }
@@ -24,7 +26,7 @@ export interface TrendItem {
 export interface MonitorKeyword {
   id: string;
   keyword: string;
-  scope?: 'all' | SourceType;
+  scope?: SourceType | 'all';
   active: boolean;
   createdAt: string;
   lastMatchedAt?: string;
@@ -39,6 +41,7 @@ export interface NotificationLog {
   source: SourceType;
   isFake: boolean;
   notifiedAt: string;
+  readAt?: string;            // ISO timestamp when marked as read; undefined = unread
 }
 
 /** AI 匹配结果 */
@@ -59,6 +62,15 @@ export interface FakeDetectResult {
 export interface SummarizeResult {
   summary: string;
   topTopics: string[];
+}
+
+/** 趋势热度变化方向 */
+export type TrendDirection = 'up' | 'down' | 'stable' | 'new';
+
+/** 趋势快照（用于方向对比） */
+export interface TrendsSnapshot {
+  timestamp: string;
+  items: Array<{ id: string; score: number; title: string }>;
 }
 
 /** 监控配置 */

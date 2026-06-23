@@ -37,45 +37,45 @@ export function TrendCard({ trend, rank, onClick }: TrendCardProps) {
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className={`text-lg font-black ${
+            <span className={`text-xl font-black ${
               rank === 1 ? 'text-primary' : rank === 2 ? 'text-amber-400' : rank === 3 ? 'text-orange-400' : 'text-muted-foreground'
             }`}>
               #{rank}
             </span>
             <Badge
               variant="outline"
-              className={`text-[10px] px-1.5 py-0 ${sourceColors[trend.source] || ''}`}
+              className={`text-xs px-2 py-0.5 ${sourceColors[trend.source] || ''}`}
             >
               {trend.sourceLabel}
             </Badge>
             {isFake && (
-              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+              <Badge variant="destructive" className="text-xs px-2 py-0.5">
                 ⚠️ 疑似虚假
               </Badge>
             )}
             {trend.matchedKeywords && trend.matchedKeywords.length > 0 && (
-              <Badge className="text-[10px] px-1.5 py-0 bg-primary/20 text-primary border-primary/30">
+              <Badge className="text-xs px-2 py-0.5 bg-primary/20 text-primary border-primary/30">
                 🎯 {trend.matchedKeywords.join(', ')}
               </Badge>
             )}
           </div>
           <div className="text-right">
             <div className="text-xs text-muted-foreground">热度</div>
-            <NumberTicker value={trend.score} className="text-sm font-bold text-primary" />
+            <NumberTicker value={trend.score} className="text-base font-bold text-primary" />
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="pt-0">
-        <h3 className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+        <h3 className="text-base font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
           {trend.title}
         </h3>
         {trend.description && (
-          <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
+          <p className="mt-1.5 text-sm text-muted-foreground line-clamp-2">
             {trend.description}
           </p>
         )}
-        <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+        <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
           {trend.author && (
             <>
               <span>@{trend.author}</span>
@@ -87,7 +87,7 @@ export function TrendCard({ trend, rank, onClick }: TrendCardProps) {
         {trend.tags && trend.tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {trend.tags.slice(0, 3).map(tag => (
-              <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+              <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                 {tag}
               </span>
             ))}
