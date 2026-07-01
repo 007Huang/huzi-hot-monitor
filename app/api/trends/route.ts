@@ -2,6 +2,7 @@
 // 核心策略：区分「搜索型源」和「浏览型源」
 //   - 有关键词时：只用搜索型源（Twitter/网页搜索/知乎搜索），避免无关热榜内容
 //   - 无关键词时：用全部源（热榜+搜索），展示全站热门
+//   - 有关键词时：自动 Query Expansion，多查询并行搜索提高召回率
 import { NextRequest, NextResponse } from 'next/server';
 import { webSearch, fetchAITrends } from '@/lib/sources/web-search';
 import { searchTweets, fetchTwitterTrends } from '@/lib/sources/twitter';
@@ -11,6 +12,7 @@ import { fetchTechNews } from '@/lib/sources/tech-news';
 import { fetchToutiaoHot } from '@/lib/sources/toutiao';
 import { resolveAccount } from '@/lib/sources/account-detect';
 import { filterFreshItems } from '@/lib/freshness';
+import { expandKeywords, flattenExpandedQueries } from '@/lib/query-expansion';
 import type { TrendItem, SourceType } from '@/types';
 
 const ALL_SOURCES: SourceType[] = ['web-search', 'twitter', 'weibo', 'zhihu', 'tech-news', 'toutiao'];
@@ -33,6 +35,32 @@ export async function GET(request: NextRequest) {
 
     const hasKeyword = keyword.trim().length > 0;
 
+    // ===== Query Expansion：将单个关键词扩展为多个语义查询变体 =====
+    let expandedQueriesMap: Map<string, string[]> | null = null;
+    let allSearchQueries: string[] = [];
+
+    if (hasKeyword) {
+      try {
+        // 解析出各个关键词（用 ' OR ' 分隔）
+        const individualKeywords = keyword.split(' OR ').map(k => k.trim()).filter(Boolean);
+        if (individualKeywords.length > 0) {
+          expandedQueriesMap = await expandKeywords(individualKeywords);
+          allSearchQueries = flattenExpandedQueries(expandedQueriesMap);
+          // 最多 5 个扩展查询，避免搜索源调用过多
+          if (allSearchQueries.length > 5) {
+            allSearchQueries = allSearchQueries.slice(0, 5);
+          }
+        }
+      } catch (error) {
+        console.error('Query expansion failed, using original keywords:', error);
+      }
+    }
+
+    // 如果没有扩展结果，使用原始关键词
+    if (allSearchQueries.length === 0 && hasKeyword) {
+      allSearchQueries = [keyword];
+    }
+
     // 智能账号识别：如果关键词是账号名，获取该账号内容
     let accountItems: TrendItem[] = [];
     if (hasKeyword) {
@@ -48,14 +76,19 @@ export async function GET(request: NextRequest) {
 
     // 并行获取各数据源
     const fetchPromises: Promise<TrendItem[]>[] = [];
+    // 每个搜索源的总分配额
     const perSourceLimit = Math.max(10, Math.ceil(limit / sources.length));
+    // 每个扩展查询的分配额（平分）
+    const perQueryLimit = Math.max(3, Math.ceil(perSourceLimit / Math.max(allSearchQueries.length, 1)));
 
-    // ===== 搜索型源：有关键词时用关键词搜索，无关键词时返回默认热门 =====
+    // ===== 搜索型源：有关键词时用扩展查询搜索，无关键词时返回默认热门 =====
 
     if (sources.includes('web-search')) {
       if (hasKeyword) {
-        // 有关键词：搜索，限定最近一周结果（比 'day' 更宽，保证召回率）
-        fetchPromises.push(webSearch({ keyword, limit: perSourceLimit, fresh: 'week' }));
+        // 用每个扩展查询独立搜索，合并结果
+        for (const q of allSearchQueries) {
+          fetchPromises.push(webSearch({ keyword: q, limit: perQueryLimit, fresh: 'week' }));
+        }
       } else {
         fetchPromises.push(fetchAITrends(perSourceLimit));
       }
@@ -63,7 +96,9 @@ export async function GET(request: NextRequest) {
 
     if (sources.includes('twitter')) {
       if (hasKeyword) {
-        fetchPromises.push(searchTweets({ keyword, limit: perSourceLimit }));
+        for (const q of allSearchQueries) {
+          fetchPromises.push(searchTweets({ keyword: q, limit: perQueryLimit }));
+        }
       } else {
         fetchPromises.push(fetchTwitterTrends(perSourceLimit));
       }
@@ -71,14 +106,15 @@ export async function GET(request: NextRequest) {
 
     if (sources.includes('zhihu')) {
       if (hasKeyword) {
-        // 有关键词：只搜索，不取热榜（热榜内容与关键词无关）
-        fetchPromises.push(searchZhihu(keyword, perSourceLimit));
+        for (const q of allSearchQueries) {
+          fetchPromises.push(searchZhihu(q, perQueryLimit));
+        }
       } else {
         fetchPromises.push(fetchZhihuHot(perSourceLimit));
       }
     }
 
-    // ===== 浏览型源：只在无关键词时请求（有关键词时内容不匹配，跳过） =====
+    // ===== 浏览型源：只在无关键词时请求 =====
 
     if (!hasKeyword) {
       if (sources.includes('weibo')) {
@@ -120,11 +156,17 @@ export async function GET(request: NextRequest) {
     // 按热度排序
     freshDeduped.sort((a, b) => b.score - a.score);
 
+    // 构建返回 meta（包含扩展查询信息供客户端使用）
+    const expandedQueriesObj = expandedQueriesMap
+      ? Object.fromEntries(expandedQueriesMap)
+      : undefined;
+
     return NextResponse.json({
       success: true,
       data: freshDeduped.slice(0, limit),
       meta: {
         keyword,
+        expandedQueries: expandedQueriesObj,
         sources,
         total: freshDeduped.length,
         fetchedAt: new Date().toISOString(),

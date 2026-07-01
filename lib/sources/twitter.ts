@@ -152,6 +152,12 @@ async function fetchSearchPage(
           source: 'twitter' as SourceType,
           sourceLabel: 'Twitter',
           author: authorName ? `${authorName} (@${author})` : author,
+          interactions: {
+            likes: likeCount || undefined,
+            retweets: retweetCount || undefined,
+            replies: replyCount || undefined,
+            views: viewCount > 0 ? viewCount : undefined,
+          },
           createdAt,
           fetchedAt: now,
         });
@@ -234,6 +240,12 @@ export async function fetchUserTweets(userName: string, limit = 10): Promise<Tre
         source: 'twitter' as SourceType,
         sourceLabel: `@${userName}`,
         author: authorName ? `${authorName} (@${author})` : author,
+        interactions: {
+          likes: likeCount || undefined,
+          retweets: retweetCount || undefined,
+          replies: replyCount || undefined,
+          views: viewCount > 0 ? viewCount : undefined,
+        },
         createdAt,
         fetchedAt: now,
       };

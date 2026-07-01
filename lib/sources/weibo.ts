@@ -175,6 +175,11 @@ export async function fetchWeiboUserTimeline(uid: string, limit = 10): Promise<T
           source: 'weibo' as SourceType,
           sourceLabel: `@${userName}`,
           author: userName as string,
+          interactions: {
+            likes: attitudesCount || undefined,
+            retweets: repostsCount || undefined,
+            replies: commentsCount || undefined,
+          },
           createdAt,
           fetchedAt: now,
         };

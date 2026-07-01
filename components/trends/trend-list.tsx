@@ -9,9 +9,10 @@ interface TrendListProps {
   trends: TrendItem[];
   isLoading?: boolean;
   onTrendClick?: (trend: TrendItem) => void;
+  showMatchReason?: boolean;
 }
 
-export function TrendList({ trends, isLoading, onTrendClick }: TrendListProps) {
+export function TrendList({ trends, isLoading, onTrendClick, showMatchReason }: TrendListProps) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(30);
 
@@ -65,6 +66,7 @@ export function TrendList({ trends, isLoading, onTrendClick }: TrendListProps) {
             trend={trend}
             rank={(page - 1) * pageSize + idx + 1}
             onClick={onTrendClick}
+            showMatchReason={showMatchReason}
           />
         ))}
       </div>

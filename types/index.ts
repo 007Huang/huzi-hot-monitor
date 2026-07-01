@@ -18,6 +18,16 @@ export interface TrendItem {
   matchedKeywords?: string[]; // 匹配到的关键词
   direction?: TrendDirection; // 热度变化方向
   previousScore?: number;     // 上次热度分
+  interactions?: {            // 互动数据（Twitter/微博等有的话则填充）
+    likes?: number;
+    retweets?: number;
+    replies?: number;
+    views?: number;
+  };
+  matchReason?: string;       // AI 匹配相关性理由
+  matchRelationType?: 'explicit' | 'semantic';  // AI 匹配类型（仅匹配时设置）
+  localMatchReason?: string;  // 本地关键词匹配理由
+  aiSummary?: string;         // AI 生成的简短摘要
   createdAt: string;       // 内容发布时间 (ISO)
   fetchedAt: string;       // 抓取时间 (ISO)
 }
@@ -49,6 +59,46 @@ export interface MatchResult {
   matched: boolean;
   confidence: number;
   reason: string;
+  matchedKeywords?: string[];      // 实际匹配到的关键词
+  relationType?: 'explicit' | 'semantic' | 'unrelated';  // 匹配类型
+}
+
+/** 查询扩展结果 */
+export interface ExpandedQuery {
+  original: string;       // 原始关键词
+  variants: string[];     // 扩展变体
+  expandedAt: string;     // ISO 时间戳
+}
+
+/** 自评估测试用例 */
+export interface EvalTestCase {
+  id: string;
+  keyword: string;
+  title: string;
+  description: string;
+  expectedMatch: boolean;
+  expectedRelationType?: 'explicit' | 'semantic' | 'unrelated';
+}
+
+/** 自评估结果 */
+export interface EvalResult {
+  keyword: string;
+  timestamp: string;
+  totalCases: number;
+  truePositives: number;
+  falsePositives: number;
+  trueNegatives: number;
+  falseNegatives: number;
+  precision: number;
+  recall: number;
+  accuracy: number;
+  details: Array<{
+    caseId: string;
+    aiMatched: boolean;
+    aiRelationType?: string;
+    expectedMatch: boolean;
+    correct: boolean;
+  }>;
 }
 
 /** AI 假内容检测结果 */

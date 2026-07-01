@@ -71,6 +71,9 @@ interface UseMonitorReturn {
   matchedKeywordList: MatchedKeywordSummary[];
   // 计算结果
   displayedTrends: TrendItem[];
+  // 全局匹配理由展开控制
+  showAllMatchReasons: boolean;
+  toggleAllMatchReasons: () => void;
 }
 
 // ===== 趋势方向计算 =====
@@ -102,19 +105,65 @@ function computeTrendDirections(
 
 // ===== 本地关键词匹配（子串匹配，填充 matchedKeywords） =====
 
+/** 扩展查询映射：{ [originalKeyword]: [variant1, variant2, ...] } */
+interface ExpandedQueriesMap {
+  [originalKeyword: string]: string[];
+}
+
 function matchKeywordsLocally(
   trends: TrendItem[],
-  activeKeywords: MonitorKeyword[]
+  activeKeywords: MonitorKeyword[],
+  expandedQueriesMap?: ExpandedQueriesMap  // 可选：扩展查询变体
 ): TrendItem[] {
   if (activeKeywords.length === 0) return trends;
-  const keywordStrings = activeKeywords.map(k => k.keyword.toLowerCase());
+
+  // 构建搜索字符串集合：原始关键词 + 扩展变体
+  const allSearchStrings = new Set<string>();
+  activeKeywords.forEach(kw => {
+    const kwLower = kw.keyword.toLowerCase();
+    allSearchStrings.add(kwLower);
+    const variants = expandedQueriesMap?.[kw.keyword];
+    if (variants) {
+      variants.forEach(v => {
+        const vLower = v.toLowerCase();
+        if (vLower !== kwLower) allSearchStrings.add(vLower);
+      });
+    }
+  });
 
   return trends.map(trend => {
     const text = `${trend.title} ${trend.description || ''}`.toLowerCase();
-    const matched = keywordStrings.filter(kw => text.includes(kw));
-    return matched.length > 0
-      ? { ...trend, matchedKeywords: matched.map(k => activeKeywords.find(ak => ak.keyword.toLowerCase() === k)?.keyword || k) }
-      : trend;
+    const matched: string[] = [];
+
+    // 对每个活跃关键词，检查原始词或扩展变体是否在文本中
+    for (const kw of activeKeywords) {
+      const kwLower = kw.keyword.toLowerCase();
+      // 检查原始关键词
+      if (text.includes(kwLower)) {
+        if (!matched.includes(kw.keyword)) matched.push(kw.keyword);
+        continue;
+      }
+      // 检查扩展变体
+      const variants = expandedQueriesMap?.[kw.keyword];
+      if (variants) {
+        const variantMatch = variants.find(v => {
+          const vLower = v.toLowerCase();
+          return vLower !== kwLower && text.includes(vLower);
+        });
+        if (variantMatch) {
+          if (!matched.includes(kw.keyword)) matched.push(kw.keyword);
+        }
+      }
+    }
+
+    if (matched.length > 0) {
+      return {
+        ...trend,
+        matchedKeywords: matched,
+        localMatchReason: `标题/描述中包含关键词「${matched.join('、')}」`,
+      };
+    }
+    return trend;
   });
 }
 
@@ -133,6 +182,7 @@ export function useMonitor(): UseMonitorReturn {
   const [notificationVersion, setNotificationVersion] = useState(0);
   const monitorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialMount = useRef(true);
+  const [showAllMatchReasons, setShowAllMatchReasons] = useState(false);
 
   // 排序状态
   const [sortBy, setSortBy] = useState<SortBy>('score');
@@ -236,6 +286,64 @@ export function useMonitor(): UseMonitorReturn {
     return result;
   }, [sortedTrends, sourceFilter, scoreRange, showFake, matchFilter, keywordFilter, timeRange]);
 
+  /** 异步生成 AI 摘要（不阻塞主流程） */
+  const generateAiSummaries = useCallback(async (trends: TrendItem[]) => {
+    const topTrends = trends.slice(0, 10).map(t => ({ id: t.id, title: t.title, description: t.description }));
+    if (topTrends.length === 0) return;
+    try {
+      const res = await fetch('/api/ai/summarize-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trends: topTrends }),
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setTrends(prev => prev.map(t => ({
+          ...t,
+          aiSummary: data.data[t.id] || t.aiSummary,
+        })));
+      }
+    } catch (error) {
+      console.error('Generate AI summaries error:', error);
+    }
+  }, []);
+
+  /** 异步 AI 关键词语义匹配（不阻塞主流程，独立于监控开关） */
+  const generateAiMatchReasons = useCallback(async (trends: TrendItem[], keywords: MonitorKeyword[]) => {
+    const activeKeywords = keywords.filter(k => k.active);
+    if (activeKeywords.length === 0) return;
+    const keywordStrings = activeKeywords.map(k => k.keyword);
+
+    // 只对本地已匹配的趋势做 AI 验证（top 5 条，控制成本）
+    const matchedTrends = trends.filter(t => t.localMatchReason).slice(0, 5);
+    if (matchedTrends.length === 0) return;
+
+    const batchInput = matchedTrends.map(t => ({ id: t.id, title: t.title, description: t.description }));
+    try {
+      const res = await fetch('/api/ai/match-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trends: batchInput, keywords: keywordStrings }),
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setTrends(prev => prev.map(t => {
+          const aiResult = data.data[t.id];
+          if (aiResult && aiResult.matched) {
+            return {
+              ...t,
+              matchReason: aiResult.reason,
+              matchRelationType: aiResult.relationType as 'explicit' | 'semantic' | undefined,
+            };
+          }
+          return t;
+        }));
+      }
+    } catch (error) {
+      console.error('Generate AI match reasons error:', error);
+    }
+  }, []);
+
   // 获取热点数据
   const fetchTrends = useCallback(async () => {
     setIsLoading(true);
@@ -257,8 +365,11 @@ export function useMonitor(): UseMonitorReturn {
         const prevSnapshot = getTrendsSnapshot();
         const withDirection = computeTrendDirections(data.data, prevSnapshot);
 
-        // 本地文本匹配：用活跃关键词对趋势做子串匹配，填充 matchedKeywords
-        const withMatching = matchKeywordsLocally(withDirection, activeKeywords);
+        // 从 meta 中提取扩展查询映射（服务端 Query Expansion 的结果）
+        const expandedQueriesMap = data.meta?.expandedQueries as ExpandedQueriesMap | undefined;
+
+        // 本地文本匹配：用活跃关键词 + 扩展查询变体对趋势做子串匹配
+        const withMatching = matchKeywordsLocally(withDirection, activeKeywords, expandedQueriesMap);
 
         // 保存本次数据为快照（供下回方向对比）
         const snapshot: TrendsSnapshot = {
@@ -270,10 +381,44 @@ export function useMonitor(): UseMonitorReturn {
         setTrends(withMatching);
         setLastCheckAt(data.meta?.fetchedAt || new Date().toISOString());
 
-        // 如果监控开启，进行 AI 关键词匹配和通知
+        // 本地匹配通知：监控开启且有活跃关键词时，对本地子串匹配命中的趋势创建通知记录
+        if (monitorEnabled && activeKeywords.length > 0) {
+          const notifiedIds = getNotifiedIds();
+          let newNotifications = false;
+          for (const trend of withMatching) {
+            if (trend.matchedKeywords && trend.matchedKeywords.length > 0 && !notifiedIds.has(trend.id)) {
+              addNotifiedId(trend.id);
+              addNotificationLog({
+                keyword: trend.matchedKeywords.join(', '),
+                trendTitle: trend.title,
+                trendUrl: trend.url,
+                source: trend.source,
+                isFake: trend.isFake || false,
+              });
+              newNotifications = true;
+              // 发送浏览器通知
+              sendBrowserNotification(
+                `🎯 热点匹配: ${trend.title}`,
+                `关键词 "${trend.matchedKeywords.join(', ')}" 匹配到新热点`,
+                trend.url
+              );
+            }
+          }
+          if (newNotifications) {
+            setNotificationVersion(v => v + 1);
+          }
+        }
+
+        // 如果监控开启，进行 AI 关键词匹配和通知（补充 AI 级别的精确匹配）
         if (monitorEnabled && activeKeywords.length > 0) {
           await processKeywordMatching(data.data, activeKeywords);
         }
+
+        // 异步生成 AI 摘要（取 top 10 条）
+        generateAiSummaries(withMatching);
+
+        // 异步 AI 语义匹配（独立于监控开关，仅用于展示）
+        generateAiMatchReasons(withMatching, keywords);
       }
     } catch (error) {
       console.error('Fetch trends error:', error);
@@ -333,6 +478,13 @@ export function useMonitor(): UseMonitorReturn {
         const matchData = await matchRes.json();
 
         if (matchData.success && matchData.data?.matched) {
+          // 存储 AI 匹配理由到 trend
+          setTrends(prev => prev.map(t =>
+            t.id === trend.id
+              ? { ...t, matchedKeywords: [...new Set([...(t.matchedKeywords || []), ...keywordStrings])], matchReason: matchData.data.reason }
+              : t
+          ));
+
           // 发送浏览器通知
           sendBrowserNotification(
             `🔥 热点匹配: ${trend.title}`,
@@ -522,5 +674,8 @@ export function useMonitor(): UseMonitorReturn {
     keywordFilter,
     setKeywordFilter,
     matchedKeywordList,
+    // 全局匹配理由展开控制
+    showAllMatchReasons,
+    toggleAllMatchReasons: () => setShowAllMatchReasons(prev => !prev),
   };
 }

@@ -28,6 +28,9 @@ interface TrendListHeaderProps {
   keywordFilter: string | null;
   setKeywordFilter: (keyword: string | null) => void;
   matchedKeywordList: MatchedKeywordSummary[];
+  showAllMatchReasons?: boolean;
+  toggleAllMatchReasons?: () => void;
+  hasMatchReasons?: boolean;
 }
 
 const sources = [
@@ -66,6 +69,9 @@ export function TrendListHeader({
   keywordFilter,
   setKeywordFilter,
   matchedKeywordList,
+  showAllMatchReasons,
+  toggleAllMatchReasons,
+  hasMatchReasons,
 }: TrendListHeaderProps) {
   const handleSort = (key: SortBy) => {
     if (sortBy === key) {
@@ -221,6 +227,18 @@ export function TrendListHeader({
             className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-destructive"
           >
             重置
+          </Button>
+        )}
+
+        {/* 一键展开/折叠匹配理由 */}
+        {hasMatchReasons && toggleAllMatchReasons && (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={toggleAllMatchReasons}
+            className="h-5 px-1.5 text-[10px] text-primary/70 hover:text-primary transition-colors"
+          >
+            {showAllMatchReasons ? '📋 折叠理由' : '📋 展开理由'}
           </Button>
         )}
       </div>

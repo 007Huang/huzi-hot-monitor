@@ -10,9 +10,10 @@ interface RadarHotspotListProps {
   isLoading?: boolean;
   /** 占位：条目点击回调 */
   onTrendClick?: (trend: TrendItem) => void;
+  showMatchReason?: boolean;
 }
 
-export function RadarHotspotList({ trends, isLoading, onTrendClick }: RadarHotspotListProps) {
+export function RadarHotspotList({ trends, isLoading, onTrendClick, showMatchReason }: RadarHotspotListProps) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(30);
 
@@ -66,6 +67,7 @@ export function RadarHotspotList({ trends, isLoading, onTrendClick }: RadarHotsp
             trend={trend}
             rank={(page - 1) * pageSize + idx + 1}
             onClick={onTrendClick}
+            showMatchReason={showMatchReason}
           />
         ))}
       </div>

@@ -48,6 +48,8 @@ export function RadarLayout() {
     keywordFilter,
     setKeywordFilter,
     matchedKeywordList,
+    showAllMatchReasons,
+    toggleAllMatchReasons,
   } = useMonitor();
 
   const [selectedTrend, setSelectedTrend] = useState<TrendItem | null>(null);
@@ -97,11 +99,15 @@ export function RadarLayout() {
           keywordFilter={keywordFilter}
           setKeywordFilter={setKeywordFilter}
           matchedKeywordList={matchedKeywordList}
+          showAllMatchReasons={showAllMatchReasons}
+          toggleAllMatchReasons={toggleAllMatchReasons}
+          hasMatchReasons={displayedTrends.some(t => t.matchReason || t.localMatchReason)}
         />
 
         <RadarHotspotList
           trends={displayedTrends}
           isLoading={isLoading}
+          showMatchReason={showAllMatchReasons}
           onTrendClick={(trend) => {
             setSelectedTrend(trend);
             setDetailOpen(true);
